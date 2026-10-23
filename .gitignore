@@ -1,0 +1,60 @@
+# ============================================================
+# SparkShield — .gitignore
+# ============================================================
+
+# ── Raw dataset (never commit — ~1 GB) ──────────────────────
+data/raw/
+*.csv
+*.pcap
+
+# ── Processed data and model artifacts ──────────────────────
+data/processed/
+models/
+
+# ── Build outputs ────────────────────────────────────────────
+scala/target/
+scala/project/target/
+scala/project/project/
+*.class
+*.jar
+sparkshield-assembly-*.jar
+
+# ── sbt ──────────────────────────────────────────────────────
+.sbt/
+.bsp/
+
+# ── Spark logs / checkpoints / output ───────────────────────
+spark-warehouse/
+derby.log
+metastore_db/
+checkpoints/
+results/logs/
+results/metrics/*.json
+results/metrics/*.csv
+
+# ── Python virtualenv ────────────────────────────────────────
+pyspark/.venv/
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# ── macOS ────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── IDE ──────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.iml
+.metals/
+.bloop/
+
+# ── Docker volumes / Kafka data ──────────────────────────────
+kafka/data/
+
+# ── Environment secrets ──────────────────────────────────────
+.env
+*.env.local
+secrets/
