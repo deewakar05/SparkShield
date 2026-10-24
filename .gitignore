@@ -12,6 +12,7 @@ data/processed/
 models/
 
 # ── Build outputs ────────────────────────────────────────────
+target/
 scala/target/
 scala/project/target/
 scala/project/project/
@@ -28,6 +29,7 @@ spark-warehouse/
 derby.log
 metastore_db/
 checkpoints/
+results/streaming/
 results/logs/
 results/metrics/*.json
 results/metrics/*.csv
@@ -58,3 +60,10 @@ kafka/data/
 .env
 *.env.local
 secrets/
+
+# Generated analytics, model runs, and streaming demo outputs
+results/ml/
+results/sql-analytics/
+results/streaming-ml/
+results/streaming/
+checkpoints/

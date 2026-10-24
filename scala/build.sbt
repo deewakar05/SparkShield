@@ -27,11 +27,10 @@ lazy val root = (project in file("."))
       "org.apache.spark" %% "spark-core"      % "3.5.9" % "provided",
       "org.apache.spark" %% "spark-sql"       % "3.5.9" % "provided",
       "org.apache.spark" %% "spark-mllib"     % "3.5.9" % "provided",
-      "org.apache.spark" %% "spark-graphx"    % "3.5.9" % "provided",
-      "org.apache.spark" %% "spark-streaming" % "3.5.9" % "provided",
 
-      // Kafka connector for Structured Streaming
-      "org.apache.spark" %% "spark-sql-kafka-0-10" % "3.5.9" % "provided",
+      // Kafka connector for Structured Streaming and Kafka Producer
+      "org.apache.spark" %% "spark-sql-kafka-0-10" % "3.5.9",
+      "org.apache.kafka" % "kafka-clients" % "3.5.1",
 
       "org.slf4j" % "slf4j-api" % "1.7.36",
 

@@ -192,12 +192,18 @@ object DataIngestion {
     }
   }
 
-  /** Parse CLI args into (mode, path) */
-  private def parseArgs(args: Array[String]): (String, String) = {
-    val defaultDir  = Option(System.getProperty("sparkshield.dataset.dir"))
+  /**
+   * Resolves default dataset directory from system properties, environment variable,
+   * or standard Downloads fallback.
+   */
+  def defaultDatasetDir: String =
+    Option(System.getProperty("sparkshield.dataset.dir"))
       .orElse(Option(System.getenv("SPARKSHIELD_DATASET_DIR")))
       .getOrElse(System.getProperty("user.home") + "/Downloads/MachineLearningCVE")
 
+  /** Parse CLI args into (mode, path) */
+  private def parseArgs(args: Array[String]): (String, String) = {
+    val defaultDir  = defaultDatasetDir
     val defaultFile = s"$defaultDir/Monday-WorkingHours.pcap_ISCX.csv"
 
     if (args.isEmpty) {

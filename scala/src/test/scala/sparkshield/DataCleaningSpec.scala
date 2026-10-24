@@ -1,8 +1,7 @@
 package sparkshield
 
-import org.apache.spark.sql.{Row, SparkSession}
+import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.{StringType, StructField, StructType}
-import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
 
 /**
@@ -11,21 +10,9 @@ import org.scalatest.funsuite.AnyFunSuite
  * All tests use small synthetic fixtures — no CICIDS2017 data needed.
  * SparkSession is local[1] for speed.
  */
-class DataCleaningSpec extends AnyFunSuite with BeforeAndAfterAll {
+class DataCleaningSpec extends SharedSparkSession {
 
-  @transient var spark: SparkSession = _
-
-  override def beforeAll(): Unit = {
-    spark = SparkSession.builder()
-      .appName("DataCleaningSpec")
-      .master("local[1]")
-      .config("spark.ui.enabled", "false")
-      .config("spark.sql.shuffle.partitions", "2")
-      .getOrCreate()
-    spark.sparkContext.setLogLevel("ERROR")
-  }
-
-  override def afterAll(): Unit = { if (spark != null) spark.stop() }
+  override def testMaster: String = "local[1]"
 
   // ── Helpers ─────────────────────────────────────────────────
 
@@ -135,6 +122,94 @@ class DataCleaningSpec extends AnyFunSuite with BeforeAndAfterAll {
     assert(binaryLabels("BENIGN") === "BENIGN")
     assert(binaryLabels("DDoS")   === "ATTACK")
     assert(binaryLabels("PortScan") === "ATTACK")
+  }
+
+  test("label_binary handles case insensitivity and maps unrecognized labels to UNKNOWN") {
+    val raw = makeRawDf(
+      Seq("f1", " Label "),
+      Seq(
+        Seq("1.0", "benign"),
+        Seq("2.0", "Benign"),
+        Seq("3.0", "BENIGN"),
+        Seq("4.0", "  BENIGN  "),
+        Seq("5.0", "ZeroDayRansomware"),
+        Seq("6.0", "Infiltration-Backdoor"),
+        Seq("7.0", "RandomUnrecognizedAttack"),
+        Seq("8.0", null),
+        Seq("9.0", ""),
+        Seq("10.0", "   ")
+      )
+    )
+    val schema = DataCleaning.buildSchema(raw.columns)
+    val renamed = DataCleaning.renameColumns(raw, schema)
+    val labeled = DataCleaning.normalizeLabel(renamed, schema.labelColumn)
+
+    val rows = labeled.select("label_original", "label_binary").collect()
+
+    // Case insensitivity & whitespace trimming: "benign", "Benign", "  BENIGN  " must all be BENIGN
+    val benignRow1 = rows.find(r => Option(r.getString(0)).contains("benign")).get
+    assert(benignRow1.getAs[String]("label_binary") === "BENIGN")
+
+    val benignRow2 = rows.find(r => Option(r.getString(0)).contains("Benign")).get
+    assert(benignRow2.getAs[String]("label_binary") === "BENIGN")
+
+    val benignRow3 = rows.find(r => Option(r.getString(0)).contains("BENIGN")).get
+    assert(benignRow3.getAs[String]("label_binary") === "BENIGN")
+
+    // Unrecognized attack labels must NEVER silently map to ATTACK or BENIGN — must be UNKNOWN
+    val unknownAttack1 = rows.find(r => Option(r.getString(0)).contains("ZeroDayRansomware")).get
+    assert(unknownAttack1.getAs[String]("label_binary") === "UNKNOWN")
+
+    val unknownAttack2 = rows.find(r => Option(r.getString(0)).contains("Infiltration-Backdoor")).get
+    assert(unknownAttack2.getAs[String]("label_binary") === "UNKNOWN")
+
+    val unknownAttack3 = rows.find(r => Option(r.getString(0)).contains("RandomUnrecognizedAttack")).get
+    assert(unknownAttack3.getAs[String]("label_binary") === "UNKNOWN")
+
+    // Null, empty string, or whitespace-only labels should be marked UNKNOWN
+    val nullRow = rows.find(r => r.isNullAt(0) || r.getString(0) == null).get
+    assert(nullRow.getAs[String]("label_binary") === "UNKNOWN")
+
+    val emptyRow = rows.find(r => !r.isNullAt(0) && r.getString(0).isEmpty).get
+    assert(emptyRow.getAs[String]("label_binary") === "UNKNOWN")
+  }
+
+  test("label_binary recognizes all explicitly supported attack classes from CICIDS2017") {
+    val attacks = Seq(
+      "DDoS", "ddos", "DDOS",
+      "PortScan", "portscan",
+      "Bot", "bot", "Botnet",
+      "Infiltration",
+      "FTP-Patator", "ftp-patator",
+      "SSH-Patator", "ssh-patator",
+      "DoS GoldenEye", "dos goldeneye",
+      "DoS Hulk",
+      "DoS Slowhttptest",
+      "DoS slowloris",
+      "Heartbleed",
+      "Web Attack - Brute Force",
+      "Web Attack \u0096 Brute Force",
+      "Web Attack - Sql Injection",
+      "Web Attack - XSS"
+    )
+
+    val rows = attacks.zipWithIndex.map { case (atk, idx) =>
+      Seq(s"$idx.0", atk)
+    }
+
+    val raw = makeRawDf(Seq("f1", " Label "), rows)
+    val schema = DataCleaning.buildSchema(raw.columns)
+    val renamed = DataCleaning.renameColumns(raw, schema)
+    val labeled = DataCleaning.normalizeLabel(renamed, schema.labelColumn)
+
+    val collected = labeled.select("label_original", "label_binary").collect()
+    assert(collected.length === attacks.length)
+
+    collected.foreach { r =>
+      val orig = r.getString(0)
+      val bin = r.getString(1)
+      assert(bin === "ATTACK", s"Expected $orig to map to ATTACK, but got $bin")
+    }
   }
 
   // ── 4. Numeric casting ────────────────────────────────────

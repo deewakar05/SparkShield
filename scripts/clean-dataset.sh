@@ -67,8 +67,16 @@ case "$ACTION" in
     echo "All files processed successfully."
     ;;
 
+  analytics|sql)
+    INPUT_PARQUET="${2:-data/processed/cleaned_2026-10-24}"
+    OUTPUT_PATH="${3:-results/sql-analytics}"
+    echo "── Running Spark SQL Analytics on: $INPUT_PARQUET ──"
+    echo "── Output Directory: $OUTPUT_PATH ──"
+    "$SCRIPT_DIR/run.sh" sparkshield.SparkSQLAnalytics "$INPUT_PARQUET" "$OUTPUT_PATH"
+    ;;
+
   *)
-    echo "Usage: $0 {test|inspect [file]|clean [file] [output_dir]|all [dir] [output_dir]}"
+    echo "Usage: $0 {test|inspect [file]|clean [file] [output_dir]|all [dir] [output_dir]|analytics [parquet_path] [output_dir]}"
     exit 1
     ;;
 esac

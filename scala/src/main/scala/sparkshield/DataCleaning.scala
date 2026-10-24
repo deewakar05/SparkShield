@@ -1,6 +1,6 @@
 package sparkshield
 
-import org.apache.spark.sql.DataFrame
+import org.apache.spark.sql.{Column, DataFrame}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{DoubleType, LongType}
 import org.slf4j.LoggerFactory
@@ -248,22 +248,76 @@ object DataCleaning {
     }
   }
 
+  // ── Supported Ground-Truth Attack Classes ─────────────────
+  /**
+   * Ground-truth attack labels derived from the CICIDS2017 dataset
+   * and project specifications.
+   */
+  val SupportedAttackLabels: Set[String] = Set(
+    "DDOS",
+    "PORTSCAN",
+    "BOT",
+    "BOTNET",
+    "INFILTRATION",
+    "FTP-PATATOR",
+    "SSH-PATATOR",
+    "DOS GOLDENEYE",
+    "DOS HULK",
+    "DOS SLOWHTTPTEST",
+    "DOS SLOWLORIS",
+    "HEARTBLEED",
+    "WEB ATTACK - BRUTE FORCE",
+    "WEB ATTACK - SQL INJECTION",
+    "WEB ATTACK - XSS",
+    "WEB ATTACK \u0096 BRUTE FORCE",
+    "WEB ATTACK \u0096 SQL INJECTION",
+    "WEB ATTACK \u0096 XSS",
+    "WEB ATTACK \uFFFD BRUTE FORCE",
+    "WEB ATTACK \uFFFD SQL INJECTION",
+    "WEB ATTACK \uFFFD XSS"
+  )
+
+  /**
+   * Evaluates whether a column contains an explicitly supported attack class.
+   * Handles case insensitivity, whitespace, hyphens, and non-breaking dashes.
+   */
+  def isRecognizedAttack(c: Column): Column = {
+    val cleanUpper = upper(trim(c))
+    val regexCleaned = upper(trim(regexp_replace(c, "[^a-zA-Z0-9]+", " ")))
+    cleanUpper.isin(SupportedAttackLabels.toSeq: _*) ||
+      regexCleaned.isin(
+        "DDOS", "PORTSCAN", "BOT", "BOTNET", "INFILTRATION",
+        "FTP PATATOR", "SSH PATATOR", "DOS GOLDENEYE", "DOS HULK",
+        "DOS SLOWHTTPTEST", "DOS SLOWLORIS", "HEARTBLEED",
+        "WEB ATTACK BRUTE FORCE", "WEB ATTACK SQL INJECTION", "WEB ATTACK XSS"
+      )
+  }
+
   // ── Label normalization ───────────────────────────────────
 
   /**
-   * Normalize the label column (C3):
+   * Normalize the label column (C3 & Release Gate Label Integrity):
    *   - Trim whitespace from the raw label value
    *   - Preserve trimmed original in `label_original`
-   *   - Derive `label_binary`: BENIGN → "BENIGN", else → "ATTACK"
-   *   - Drop the old label column (replaced by label_original)
+   *   - Case-insensitively map BENIGN → "BENIGN"
+   *   - Case-insensitively map recognized attack classes → "ATTACK"
+   *   - Map null, empty, whitespace-only, and unrecognized labels → "UNKNOWN"
+   *   - Never silently map unrecognized labels to ATTACK or BENIGN
+   *   - Drop the old raw label column (replaced by label_original)
    */
   def normalizeLabel(df: DataFrame, labelColName: String): DataFrame = {
+    val trimmedLabel = trim(col(labelColName))
+    val isBenign = upper(trimmedLabel) === "BENIGN"
+    val isAttack = isRecognizedAttack(trimmedLabel)
+
     df
-      .withColumn("label_original", trim(col(labelColName)))
+      .withColumn("label_original", trimmedLabel)
       .withColumn(
         "label_binary",
-        when(trim(col(labelColName)) === "BENIGN", lit("BENIGN"))
-          .otherwise(lit("ATTACK"))
+        when(trimmedLabel.isNull || length(trimmedLabel) === 0, lit("UNKNOWN"))
+          .when(isBenign, lit("BENIGN"))
+          .when(isAttack, lit("ATTACK"))
+          .otherwise(lit("UNKNOWN"))
       )
       .drop(labelColName)
   }
@@ -277,11 +331,15 @@ object DataCleaning {
    * Rows flagged here are preserved in the cleaned DataFrame.
    * The ML pipeline decides whether to drop or impute them.
    */
+  /**
+   * Identifies if a numeric column value is non-finite (NaN, +Infinity, -Infinity).
+   */
+  def isNonFinite(c: Column): Column =
+    c.isNotNull && (c.isNaN || c === Double.PositiveInfinity || c === Double.NegativeInfinity)
+
   def flagInvalidNumerics(df: DataFrame, featureCols: Seq[String]): DataFrame = {
     // Build an OR condition across all numeric feature columns
-    val invalidCondition = featureCols.map { c =>
-      col(c).isNaN || col(c).equalTo(Double.PositiveInfinity) || col(c).equalTo(Double.NegativeInfinity)
-    }.reduce(_ || _)
+    val invalidCondition = featureCols.map(c => isNonFinite(col(c))).reduce(_ || _)
 
     df.withColumn("has_invalid_numeric", invalidCondition)
   }
@@ -365,9 +423,7 @@ object DataCleaning {
       extras = Map("spark.sql.shuffle.partitions" -> "8")
     )
 
-    val defaultDir = Option(System.getProperty("sparkshield.dataset.dir"))
-      .orElse(Option(System.getenv("SPARKSHIELD_DATASET_DIR")))
-      .getOrElse(System.getProperty("user.home") + "/Downloads/MachineLearningCVE")
+    val defaultDir = DataIngestion.defaultDatasetDir
 
     val inputPath = if (args.nonEmpty) args(0)
       else s"$defaultDir/Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv"

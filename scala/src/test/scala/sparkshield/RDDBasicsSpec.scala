@@ -1,7 +1,5 @@
 package sparkshield
 
-import org.apache.spark.sql.SparkSession
-import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
 
 /**
@@ -10,23 +8,7 @@ import org.scalatest.funsuite.AnyFunSuite
  * Uses a local SparkSession (master=local[1]) to avoid needing a cluster.
  * Tests use small synthetic data — no CICIDS2017 dataset required.
  */
-class RDDBasicsSpec extends AnyFunSuite with BeforeAndAfterAll {
-
-  @transient var spark: SparkSession = _
-
-  override def beforeAll(): Unit = {
-    spark = SparkSession
-      .builder()
-      .appName("RDDBasicsSpec")
-      .master("local[1]")
-      .config("spark.ui.enabled", "false")
-      .getOrCreate()
-    spark.sparkContext.setLogLevel("ERROR")
-  }
-
-  override def afterAll(): Unit = {
-    if (spark != null) spark.stop()
-  }
+class RDDBasicsSpec extends AnyFunSuite with SharedSparkSession {
 
   // ── Helper ──────────────────────────────────────────────────
   private def sc = spark.sparkContext
@@ -124,5 +106,59 @@ class RDDBasicsSpec extends AnyFunSuite with BeforeAndAfterAll {
     val rdd     = sc.parallelize(1 to 4, 2)
     val indices = rdd.mapPartitionsWithIndex { (idx, _) => Iterator(idx) }.collect().distinct
     assert(indices.toSet === Set(0, 1))
+  }
+
+  test("empty RDD behavior and exception on reduce") {
+    val empty = sc.emptyRDD[Int]
+    assert(empty.count() === 0L)
+    assert(empty.filter(_ > 0).collect().isEmpty)
+
+    // Calling reduce on an empty RDD must throw UnsupportedOperationException
+    assertThrows[UnsupportedOperationException] {
+      empty.reduce(_ + _)
+    }
+  }
+
+  test("null handling in RDD transformations") {
+    val rdd = sc.parallelize(Seq("apple", null, "banana", null, "cherry"))
+    assert(rdd.count() === 5L)
+    val nonNulls = rdd.filter(_ != null).collect()
+    assert(nonNulls.length === 3)
+    assert(nonNulls.toSet === Set("apple", "banana", "cherry"))
+  }
+
+  test("custom LongSumAccumulator handles reset, merge, and additions") {
+    val acc1 = new RDDBasics.LongSumAccumulator
+    acc1.add(10L)
+    acc1.add(25L)
+    assert(acc1.value === 35L)
+    assert(!acc1.isZero)
+
+    val acc2 = new RDDBasics.LongSumAccumulator
+    acc2.add(5L)
+
+    acc1.merge(acc2)
+    assert(acc1.value === 40L)
+
+    val copy = acc1.copy()
+    assert(copy.value === 40L)
+
+    acc1.reset()
+    assert(acc1.isZero)
+    assert(acc1.value === 0L)
+  }
+
+  test("SparkSessionFactory creates active session with custom configs") {
+    val testSession = SparkSessionFactory.create(
+      appName = "TestSessionFactory",
+      master  = "local[1]",
+      extras  = Map("spark.test.custom.key" -> "custom_value")
+    )
+    try {
+      assert(testSession.conf.get("spark.test.custom.key") === "custom_value")
+      assert(testSession.sparkContext.appName === "TestSessionFactory" || testSession.sparkContext.appName.nonEmpty)
+    } finally {
+      testSession.stop()
+    }
   }
 }

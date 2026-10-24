@@ -1,7 +1,6 @@
 package sparkshield
 
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.SparkSession
 import org.apache.spark.util.AccumulatorV2
 import org.apache.spark.{HashPartitioner, SparkContext}
 import org.slf4j.LoggerFactory
@@ -44,15 +43,10 @@ object RDDBasics {
 
     log.info("SparkShield — RDDBasics starting")
 
-    val spark = SparkSession
-      .builder()
-      .appName("SparkShield-RDD-Basics")
-      .master("local[*]")
-      .config("spark.ui.enabled", "false")
-      .config("spark.driver.memory", "1g")
-      .getOrCreate()
-
-    spark.sparkContext.setLogLevel("WARN")
+    val spark = SparkSessionFactory.create(
+      "SparkShield-RDD-Basics",
+      extras = Map("spark.driver.memory" -> "1g")
+    )
     val sc: SparkContext = spark.sparkContext
 
     println("\n" + "=" * 70)

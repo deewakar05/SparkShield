@@ -1,0 +1,55 @@
+# =============================================================
+# SparkShield — Isolated Apache Kafka KRaft Environment
+# Milestone 4 | Local Development Setup (Mac Apple Silicon Compatible)
+#
+# Isolated Project Name: sparkshield
+#
+# SECURITY AUDIT NOTICE (SEC-01):
+#   - Broker port is strictly bound to 127.0.0.1 (loopback) to prevent
+#     exposure to local network (LAN) interfaces.
+#   - Unauthenticated PLAINTEXT protocol is intended SOLELY for local
+#     development and integration testing on the developer workstation.
+#   - For production deployments, configure SASL/SCRAM authentication,
+#     TLS encryption (SSL), and network access control lists (ACLs).
+#
+# Usage:
+#   Start:   docker compose -f docker-compose.kafka.yml -p sparkshield up -d
+#   Status:  docker compose -f docker-compose.kafka.yml -p sparkshield ps
+#   Logs:    docker compose -f docker-compose.kafka.yml -p sparkshield logs -f
+#   Stop:    docker compose -f docker-compose.kafka.yml -p sparkshield down
+# =============================================================
+
+services:
+  sparkshield-kafka:
+    image: apache/kafka:3.7.0
+    container_name: sparkshield-kafka
+    hostname: sparkshield-kafka
+    ports:
+      - "127.0.0.1:9092:9092"
+    environment:
+      # KRaft mode configuration (Single-Node Broker + Controller, no ZooKeeper)
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - sparkshield-kafka-net
+
+networks:
+  sparkshield-kafka-net:
+    name: sparkshield-kafka-net
