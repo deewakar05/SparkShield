@@ -24,22 +24,29 @@ sparkshield-assembly-*.jar
 .sbt/
 .bsp/
 
-# ── Spark logs / checkpoints / output ───────────────────────
+# ── Spark logs / checkpoints / generated outputs ────────────
 spark-warehouse/
 derby.log
 metastore_db/
 checkpoints/
 results/streaming/
+results/streaming-ml/
+results/ml/
+results/sql-analytics/
+results/graph-analytics/
 results/logs/
 results/metrics/*.json
 results/metrics/*.csv
 
-# ── Python virtualenv ────────────────────────────────────────
+# ── Python virtualenv & caches ───────────────────────────────
 pyspark/.venv/
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 .ipynb_checkpoints/
+
+# ── Dashboard transient files ────────────────────────────────
+dashboard/*.log
+dashboard/.dashboard.pid
 
 # ── macOS ────────────────────────────────────────────────────
 .DS_Store
@@ -60,10 +67,3 @@ kafka/data/
 .env
 *.env.local
 secrets/
-
-# Generated analytics, model runs, and streaming demo outputs
-results/ml/
-results/sql-analytics/
-results/streaming-ml/
-results/streaming/
-checkpoints/

@@ -37,47 +37,75 @@ fi
 # ── Scala ─────────────────────────────────────────────────────
 echo ""
 echo "── Scala ─────────────────────────────────────────────────"
-SCALAC=/opt/scala-2.12.18/bin/scalac
-if [ -x "$SCALAC" ]; then
-  SCALA_VER=$($SCALAC -version 2>&1)
-  ok "scalac found: $SCALA_VER"
-else
-  if command -v scalac &>/dev/null; then
-    ok "scalac on PATH: $(scalac -version 2>&1)"
-  else
-    fail "scalac not found at $SCALAC and not on PATH"
-  fi
+SCALAC_BIN=""
+if [ -n "${SCALA_HOME:-}" ] && [ -x "$SCALA_HOME/bin/scalac" ]; then
+  SCALAC_BIN="$SCALA_HOME/bin/scalac"
+elif command -v scalac &>/dev/null; then
+  SCALAC_BIN="$(command -v scalac)"
+elif [ -x "/opt/scala-2.12.18/bin/scalac" ]; then
+  SCALAC_BIN="/opt/scala-2.12.18/bin/scalac"
 fi
 
-# ── Spark (via PySpark install) ───────────────────────────────
+if [ -n "$SCALAC_BIN" ]; then
+  SCALA_VER=$($SCALAC_BIN -version 2>&1)
+  ok "scalac found ($SCALAC_BIN): $SCALA_VER"
+else
+  warn "Standalone scalac not found on PATH (Optional: sbt manages Scala 2.12.18 compilation automatically)"
+fi
+
+# ── Spark ─────────────────────────────────────────────────────
 echo ""
 echo "── Spark ─────────────────────────────────────────────────"
-SPARK_SUBMIT=/Users/deewakarkumar/spark-python/bin/spark-submit
-PYSPARK_JARS=/Users/deewakarkumar/spark-python/lib/python3.10/site-packages/pyspark
-DERIVED_SPARK_HOME="$PYSPARK_JARS"
-
-if [ -x "$SPARK_SUBMIT" ]; then
-  ok "spark-submit found: $SPARK_SUBMIT"
-else
-  fail "spark-submit not found at $SPARK_SUBMIT"
+SPARK_SUBMIT_BIN=""
+if [ -n "${SPARK_SUBMIT:-}" ] && [ -x "$SPARK_SUBMIT" ]; then
+  SPARK_SUBMIT_BIN="$SPARK_SUBMIT"
+elif [ -n "${SPARK_HOME:-}" ] && [ -x "$SPARK_HOME/bin/spark-submit" ]; then
+  SPARK_SUBMIT_BIN="$SPARK_HOME/bin/spark-submit"
+elif command -v spark-submit &>/dev/null; then
+  SPARK_SUBMIT_BIN="$(command -v spark-submit)"
+elif [ -x "$HOME/spark-python/bin/spark-submit" ]; then
+  SPARK_SUBMIT_BIN="$HOME/spark-python/bin/spark-submit"
 fi
 
-if [ -d "$PYSPARK_JARS/jars" ]; then
-  CORE_JAR=$(ls "$PYSPARK_JARS/jars/spark-core_2.12-"*.jar 2>/dev/null | head -1)
+if [ -n "$SPARK_SUBMIT_BIN" ]; then
+  ok "spark-submit found: $SPARK_SUBMIT_BIN"
+else
+  fail "spark-submit not found. Set SPARK_SUBMIT or SPARK_HOME, or install Spark 3.5.9."
+fi
+
+SPARK_JARS_DIR=""
+if [ -n "${SPARK_HOME:-}" ] && [ -d "$SPARK_HOME/jars" ]; then
+  SPARK_JARS_DIR="$SPARK_HOME/jars"
+elif [ -n "${PYSPARK_JARS:-}" ] && [ -d "$PYSPARK_JARS/jars" ]; then
+  SPARK_JARS_DIR="$PYSPARK_JARS/jars"
+elif [ -d "$HOME/spark-python/lib/python3.10/site-packages/pyspark/jars" ]; then
+  SPARK_JARS_DIR="$HOME/spark-python/lib/python3.10/site-packages/pyspark/jars"
+elif [ -n "$SPARK_SUBMIT_BIN" ]; then
+  CANDIDATE_DIR="$(cd "$(dirname "$SPARK_SUBMIT_BIN")/.." 2>/dev/null && pwd)/jars"
+  if [ -d "$CANDIDATE_DIR" ]; then
+    SPARK_JARS_DIR="$CANDIDATE_DIR"
+  fi
+fi
+
+if [ -n "$SPARK_JARS_DIR" ] && [ -d "$SPARK_JARS_DIR" ]; then
+  CORE_JAR=$(ls "$SPARK_JARS_DIR/spark-core_2.12-"*.jar 2>/dev/null | head -1)
   if [ -n "$CORE_JAR" ]; then
-    ok "Spark jars found: $(basename "$CORE_JAR")"
+    ok "Spark jars directory: $SPARK_JARS_DIR ($(basename "$CORE_JAR"))"
   else
-    fail "No spark-core jar found in $PYSPARK_JARS/jars"
+    warn "No spark-core_2.12 jar found in $SPARK_JARS_DIR"
   fi
 else
-  fail "PySpark jars directory not found: $PYSPARK_JARS/jars"
+  warn "Spark jars directory not found directly (spark-submit will locate them at runtime)"
 fi
 
 # Test spark-submit --version
-if SPARK_LOCAL_IP=127.0.0.1 "$SPARK_SUBMIT" --version 2>&1 | grep -q "3\.5\.9"; then
-  ok "Spark version confirmed: 3.5.9"
-else
-  warn "Could not confirm Spark 3.5.9 from spark-submit --version"
+if [ -n "$SPARK_SUBMIT_BIN" ]; then
+  if SPARK_LOCAL_IP=127.0.0.1 "$SPARK_SUBMIT_BIN" --version 2>&1 | grep -q "3\.5\."; then
+    SPARK_VER_LINE=$(SPARK_LOCAL_IP=127.0.0.1 "$SPARK_SUBMIT_BIN" --version 2>&1 | grep "version 3\.5" | head -1 || echo "Spark 3.5.x")
+    ok "Spark version confirmed: $SPARK_VER_LINE"
+  else
+    warn "Could not confirm Spark 3.5.x from spark-submit --version"
+  fi
 fi
 
 # ── sbt ───────────────────────────────────────────────────────
@@ -150,6 +178,17 @@ else
   fail "Set SPARKSHIELD_DATASET_DIR env var to point to CICIDS2017 CSVs"
 fi
 
+# ── Python (Auxiliary: Dashboard & Validation) ────────────────
+echo ""
+echo "── Python ────────────────────────────────────────────────"
+PYTHON_BIN="${PYTHON:-python3}"
+if command -v "$PYTHON_BIN" &>/dev/null; then
+  PY_VER=$("$PYTHON_BIN" --version 2>&1)
+  ok "Python found ($PYTHON_BIN): $PY_VER"
+else
+  warn "Python 3 not found on PATH. Required for web dashboard (scripts/dashboard.sh)."
+fi
+
 # ── Project build files ───────────────────────────────────────
 echo ""
 echo "── Project Build Files ────────────────────────────────────"
@@ -159,7 +198,10 @@ BUILD_FILES=(
   "scala/project/build.properties"
   "scala/project/plugins.sbt"
   "scripts/sbt-launch.jar"
+  "scripts/sbt.sh"
   "scripts/run.sh"
+  "scripts/dashboard.sh"
+  "scripts/streaming-pipeline.sh"
 )
 for f in "${BUILD_FILES[@]}"; do
   if [ -f "$PROJECT_ROOT/$f" ]; then

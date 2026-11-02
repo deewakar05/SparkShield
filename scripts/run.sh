@@ -29,6 +29,7 @@ Available main classes:
   sparkshield.NetworkFlowStreaming
   sparkshield.NetworkFlowMLStreaming
   sparkshield.IntrusionDetectionModel
+  sparkshield.NetworkGraphAnalytics
 
 Spark options:
   --master <URL>
@@ -72,27 +73,34 @@ MAIN_CLASS="$1"
 shift
 
 # ── Resolve Spark installation ────────────────────────────────
-DEFAULT_SPARK_SUBMIT="${HOME}/spark-python/bin/spark-submit"
-SPARK_SUBMIT="${SPARK_SUBMIT:-${DEFAULT_SPARK_SUBMIT}}"
+if [[ -z "${SPARK_SUBMIT:-}" ]]; then
+  if [[ -n "${SPARK_HOME:-}" && -x "${SPARK_HOME}/bin/spark-submit" ]]; then
+    SPARK_SUBMIT="${SPARK_HOME}/bin/spark-submit"
+  elif command -v spark-submit &>/dev/null; then
+    SPARK_SUBMIT="$(command -v spark-submit)"
+  elif [[ -x "${HOME}/spark-python/bin/spark-submit" ]]; then
+    SPARK_SUBMIT="${HOME}/spark-python/bin/spark-submit"
+  fi
+fi
 
-if [[ ! -x "${SPARK_SUBMIT}" ]]; then
-  echo "ERROR: spark-submit was not found or is not executable:" >&2
-  echo "  ${SPARK_SUBMIT}" >&2
-  echo "Set SPARK_SUBMIT to the correct executable path." >&2
+if [[ -z "${SPARK_SUBMIT:-}" || ! -x "${SPARK_SUBMIT}" ]]; then
+  echo "ERROR: spark-submit was not found or is not executable." >&2
+  echo "Please set SPARK_SUBMIT or SPARK_HOME to your Apache Spark installation." >&2
   exit 1
 fi
 
-DEFAULT_PYSPARK_HOME="${HOME}/spark-python/lib/python3.10/site-packages/pyspark"
-PYSPARK_HOME="${PYSPARK_HOME:-${DEFAULT_PYSPARK_HOME}}"
-
-if [[ -d "${PYSPARK_HOME}/jars" ]]; then
-  export PYSPARK_HOME
+# Resolve SPARK_HOME and jars
+if [[ -n "${SPARK_HOME:-}" && -d "${SPARK_HOME}/jars" ]]; then
+  export SPARK_HOME
+elif [[ -n "${PYSPARK_HOME:-}" && -d "${PYSPARK_HOME}/jars" ]]; then
   export SPARK_HOME="${PYSPARK_HOME}"
+elif [[ -d "${HOME}/spark-python/lib/python3.10/site-packages/pyspark/jars" ]]; then
+  export SPARK_HOME="${HOME}/spark-python/lib/python3.10/site-packages/pyspark"
 else
-  echo "ERROR: PySpark jars directory was not found:" >&2
-  echo "  ${PYSPARK_HOME}/jars" >&2
-  echo "Set PYSPARK_HOME to your PySpark installation." >&2
-  exit 1
+  DERIVED_DIR="$(cd "$(dirname "${SPARK_SUBMIT}")/.." 2>/dev/null && pwd)"
+  if [[ -d "${DERIVED_DIR}/jars" ]]; then
+    export SPARK_HOME="${DERIVED_DIR}"
+  fi
 fi
 
 export SPARK_LOCAL_IP="${SPARK_LOCAL_IP:-127.0.0.1}"
@@ -109,7 +117,7 @@ if [[ ! -f "${JAR_PATH}" ]]; then
 fi
 
 # ── Dataset directory ─────────────────────────────────────────
-DATASET_DIR="${DATASET_DIR:-${HOME}/Downloads/MachineLearningCVE}"
+DATASET_DIR="${SPARKSHIELD_DATASET_DIR:-${DATASET_DIR:-${HOME}/Downloads/MachineLearningCVE}}"
 
 # ── Spark options and application arguments ───────────────────
 SPARK_OPTS=()

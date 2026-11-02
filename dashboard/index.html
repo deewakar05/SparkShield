@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SparkShield — Security Analytics & Intrusion Detection Dashboard</title>
+  <style>
+    :root {
+      --bg-primary: #090d16;
+      --bg-secondary: #0f172a;
+      --bg-card: #1e293b;
+      --border-color: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --cyan: #38bdf8;
+      --blue: #3b82f6;
+      --green: #22c55e;
+      --red: #ef4444;
+      --purple: #c084fc;
+      --amber: #f59e0b;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-main);
+      line-height: 1.5;
+      padding-bottom: 50px;
+    }
+
+    /* Top Nav */
+    header {
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+      padding: 16px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-badge {
+      background: linear-gradient(135deg, #0284c7, #6366f1);
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 18px;
+    }
+
+    .brand h1 { font-size: 18px; font-weight: 700; }
+    .brand p { font-size: 12px; color: var(--text-muted); }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      background: #064e3b;
+      color: #86efac;
+      padding: 4px 12px;
+      border-radius: 20px;
+      border: 1px solid #059669;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background: #22c55e;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #22c55e;
+    }
+
+    button.btn-refresh {
+      background: var(--bg-card);
+      color: var(--cyan);
+      border: 1px solid var(--cyan);
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    button.btn-refresh:hover { background: var(--cyan); color: var(--bg-primary); }
+
+    /* Navigation Tabs */
+    nav.nav-tabs {
+      background: var(--bg-secondary);
+      padding: 0 32px;
+      display: flex;
+      gap: 24px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 14px 4px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover { color: var(--text-main); }
+    .tab-btn.active {
+      color: var(--cyan);
+      border-bottom: 2px solid var(--cyan);
+    }
+
+    /* Main Container */
+    main {
+      max-width: 1320px;
+      margin: 28px auto;
+      padding: 0 24px;
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Metric Cards Grid */
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 20px;
+      margin-bottom: 28px;
+    }
+
+    .metric-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .metric-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: var(--card-accent, var(--cyan));
+    }
+
+    .metric-label { font-size: 13px; color: var(--text-muted); font-weight: 500; }
+    .metric-val { font-size: 26px; font-weight: 700; margin: 8px 0 4px; }
+    .metric-sub { font-size: 12px; color: var(--text-muted); }
+
+    /* Content Cards */
+    .card-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 28px;
+    }
+
+    .card-full {
+      margin-bottom: 28px;
+    }
+
+    .panel-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 24px;
+    }
+
+    .panel-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 10px;
+    }
+
+    /* Confusion Matrix Table */
+    .cm-grid {
+      display: grid;
+      grid-template-columns: 120px 1fr 1fr;
+      gap: 8px;
+      margin: 16px 0;
+      text-align: center;
+      font-size: 13px;
+    }
+
+    .cm-header {
+      font-weight: 600;
+      color: var(--text-muted);
+      padding: 8px;
+    }
+
+    .cm-cell {
+      background: var(--bg-secondary);
+      border-radius: 6px;
+      padding: 14px 8px;
+      border: 1px solid var(--border-color);
+    }
+    .cm-cell.tp { border-color: var(--green); background: #064e3b33; }
+    .cm-cell.tn { border-color: var(--blue); background: #1e3a8a33; }
+    .cm-cell.fp { border-color: var(--amber); background: #78350f33; }
+    .cm-cell.fn { border-color: var(--red); background: #7f1d1d33; }
+
+    .cm-num { font-size: 18px; font-weight: 700; margin-bottom: 2px; }
+    .cm-tag { font-size: 11px; color: var(--text-muted); }
+
+    /* Tables */
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-top: 10px;
+    }
+
+    table.data-table th {
+      text-align: left;
+      padding: 10px 12px;
+      background: var(--bg-secondary);
+      color: var(--text-muted);
+      font-weight: 600;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    table.data-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    table.data-table tr:hover td {
+      background: #33415540;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-attack { background: #7f1d1d; color: #fca5a5; border: 1px solid #ef4444; }
+    .badge-benign { background: #064e3b; color: #86efac; border: 1px solid #22c55e; }
+
+    /* Progress bar */
+    .bar-wrap {
+      width: 100%;
+      background: var(--bg-secondary);
+      height: 8px;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+    .bar-fill {
+      height: 100%;
+      background: var(--cyan);
+    }
+
+    /* JSON display */
+    pre.raw-json {
+      background: var(--bg-secondary);
+      padding: 14px;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 11px;
+      color: #cbd5e1;
+      max-height: 250px;
+      overflow-y: auto;
+      border: 1px solid var(--border-color);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="logo-badge">🛡️</div>
+      <div>
+        <h1>SparkShield Analytics Dashboard</h1>
+        <p>Big Data Network Intrusion Detection & Streaming Monitoring</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <div class="status-pill">
+        <span class="status-dot"></span>
+        <span id="systemStatus">Pipeline Online</span>
+      </div>
+      <button class="btn-refresh" onclick="fetchData()">↻ Refresh Data</button>
+    </div>
+  </header>
+
+  <nav class="nav-tabs">
+    <button class="tab-btn active" onclick="switchTab('overview', this)">1. Overview & Data Quality</button>
+    <button class="tab-btn" onclick="switchTab('analytics', this)">2. Spark SQL Analytics</button>
+    <button class="tab-btn" onclick="switchTab('mllib', this)">3. MLlib Model Performance</button>
+    <button class="tab-btn" onclick="switchTab('streaming', this)">4. Real-Time Streaming</button>
+    <button class="tab-btn" onclick="switchTab('graphx', this)">5. GraphX Topology</button>
+  </nav>
+
+  <main>
+
+    <!-- TAB 1: OVERVIEW & DATA QUALITY -->
+    <section id="panel-overview" class="tab-panel active">
+      <div class="metric-grid">
+        <div class="metric-card" style="--card-accent: var(--blue)">
+          <div class="metric-label">Total Raw Ingested Flows</div>
+          <div class="metric-val" id="ov-total-flows">--</div>
+          <div class="metric-sub">Friday DDoS capture</div>
+        </div>
+        <div class="metric-card" style="--card-accent: var(--green)">
+          <div class="metric-label">Clean Usable Records</div>
+          <div class="metric-val" id="ov-clean-flows">--</div>
+          <div class="metric-sub" id="ov-clean-pct">--</div>
+        </div>
+        <div class="metric-card" style="--card-accent: var(--amber)">
+          <div class="metric-label">Flagged Non-Finite Flows</div>
+          <div class="metric-val" id="ov-invalid-flows">--</div>
+          <div class="metric-sub">NaN / Infinity (has_invalid_numeric)</div>
+        </div>
+        <div class="metric-card" style="--card-accent: var(--purple)">
+          <div class="metric-label">Normalized Features</div>
+          <div class="metric-val" id="ov-feature-count">81 columns</div>
+          <div class="metric-sub">78 numeric features + labels</div>
+        </div>
+      </div>
+
+      <div class="card-row">
+        <div class="panel-card">
+          <div class="panel-title">Data Cleaning Rules (C1–C6 Enforcement)</div>
+          <table class="data-table">
+            <thead>
+              <tr><th>Rule</th><th>Description</th><th>Enforcement Status</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>C1</strong></td><td>Column normalization (lowercase, snake_case)</td><td><span class="badge badge-benign">Passed</span></td></tr>
+              <tr><td><strong>C2</strong></td><td>Deterministic duplicate resolution (fwd_header_length_2)</td><td><span class="badge badge-benign">Resolved</span></td></tr>
+              <tr><td><strong>C3</strong></td><td>Label canonicalization (BENIGN vs ATTACK)</td><td><span class="badge badge-benign">Applied</span></td></tr>
+              <tr><td><strong>C4</strong></td><td>Distributed Double casting (78 features)</td><td><span class="badge badge-benign">Enforced</span></td></tr>
+              <tr><td><strong>C5</strong></td><td>Non-finite float tracking (has_invalid_numeric)</td><td><span class="badge badge-benign">Flagged</span></td></tr>
+              <tr><td><strong>C6</strong></td><td>Explicit null tracking from PERMISSIVE reader</td><td><span class="badge badge-benign">Verified (0 nulls)</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="panel-card">
+          <div class="panel-title">Data Quality Audit Log</div>
+          <pre class="raw-json" id="dq-json">Loading data-quality-report.json...</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: SPARK SQL ANALYTICS -->
+    <section id="panel-analytics" class="tab-panel">
+      <div class="metric-grid">
+        <div class="metric-card" style="--card-accent: var(--red)">
+          <div class="metric-label">DDoS Attack Traffic</div>
+          <div class="metric-val" id="sql-attack-count">--</div>
+          <div class="metric-sub" id="sql-attack-pct">--</div>
+        </div>
+        <div class="metric-card" style="--card-accent: var(--green)">
+          <div class="metric-label">Benign Traffic</div>
+          <div class="metric-val" id="sql-benign-count">--</div>
+          <div class="metric-sub" id="sql-benign-pct">--</div>
+        </div>
+        <div class="metric-card" style="--card-accent: var(--cyan)">
+          <div class="metric-label">Analyzed Features</div>
+          <div class="metric-val">78 Features</div>
+          <div class="metric-sub">Sanitized for Infinity & NaN</div>
+        </div>
+        <div class="metric-card" style="--card-accent: var(--purple)">
+          <div class="metric-label">Output Partitions</div>
+          <div class="metric-val">Parquet & CSV</div>
+          <div class="metric-sub">results/sql-analytics/</div>
+        </div>
+      </div>
+
+      <div class="card-row">
+        <div class="panel-card">
+          <div class="panel-title">Traffic Distribution Breakdown</div>
+          <div style="margin: 20px 0;">
+            <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px;">
+              <span>ATTACK (DDoS)</span>
+              <strong id="bar-attack-text">--</strong>
+            </div>
+            <div class="bar-wrap">
+              <div class="bar-fill" id="bar-attack-fill" style="background:var(--red); width:56.7%"></div>
+            </div>
+          </div>
+
+          <div style="margin: 20px 0;">
+            <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px;">
+              <span>BENIGN Traffic</span>
+              <strong id="bar-benign-text">--</strong>
+            </div>
+            <div class="bar-wrap">
+              <div class="bar-fill" id="bar-benign-fill" style="background:var(--green); width:43.3%"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-card">
+          <div class="panel-title">SQL Analytics JSON Summary</div>
+          <pre class="raw-json" id="sql-json">Loading sql-analytics-summary.json...</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: MLLIB MODEL PERFORMANCE -->
+    <section id="panel-mllib" class="tab-panel">
+      <div class="metric-grid">
+        <div class="metric-card" style="--card-accent: var(--cyan)">
+          <div class="metric-label">Test Set Accuracy</div>
+          <div class="metric-val" id="ml-acc">98.38%</div>
+          <div class="metric-sub">44,862 test flows</div>
+        </div>
+        <div class="metric-card" style="--card-accent: var(--green)">
+          <div class="metric-label">Attack Recall (TPR)</div>
+          <div class="metric-val" id="ml-rec">99.91%</div>
+          <div class="metric-sub">23 missed / 25,527 intrusions</div>
+        </div>
+        <div class="metric-card" style="--card-accent: var(--blue)">
+          <div class="metric-label">Attack Precision</div>
+          <div class="metric-val" id="ml-prec">97.31%</div>
+          <div class="metric-sub">Purity of flagged alerts</div>
+        </div>
+        <div class="metric-card" style="--card-accent: var(--purple)">
+          <div class="metric-label">ROC-AUC / PR-AUC</div>
+          <div class="metric-val" id="ml-auc">0.9991</div>
+          <div class="metric-sub">PR-AUC: 0.9992</div>
+        </div>
+      </div>
+
+      <div class="card-row">
+        <div class="panel-card">
+          <div class="panel-title">Test Set Confusion Matrix (44,862 Flows)</div>
+          <div class="cm-grid">
+            <div></div>
+            <div class="cm-header">Predicted BENIGN</div>
+            <div class="cm-header">Predicted ATTACK</div>
+
+            <div class="cm-header" style="text-align:right; padding-top:16px;">Actual BENIGN</div>
+            <div class="cm-cell tn">
+              <div class="cm-num" id="cm-tn">18,631</div>
+              <div class="cm-tag">True Negative (TN)</div>
+            </div>
+            <div class="cm-cell fp">
+              <div class="cm-num" id="cm-fp">704</div>
+              <div class="cm-tag">False Positive (FP - 3.64%)</div>
+            </div>
+
+            <div class="cm-header" style="text-align:right; padding-top:16px;">Actual ATTACK</div>
+            <div class="cm-cell fn">
+              <div class="cm-num" id="cm-fn">23</div>
+              <div class="cm-tag">False Negative (FN - 0.09%)</div>
+            </div>
+            <div class="cm-cell tp">
+              <div class="cm-num" id="cm-tp">25,504</div>
+              <div class="cm-tag">True Positive (TP)</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-card">
+          <div class="panel-title" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Model Hyperparameters & Pipeline Spec</span>
+            <span id="ml-run-badge" class="badge badge-info" style="font-family:monospace">run-20261024-115612</span>
+          </div>
+          <table class="data-table">
+            <tbody>
+              <tr><td><strong>Algorithm</strong></td><td>Spark MLlib PipelineModel (LogisticRegression)</td></tr>
+              <tr><td><strong>Stages</strong></td><td>VectorAssembler &rarr; StandardScaler &rarr; LogisticRegression</td></tr>
+              <tr><td><strong>Hyperparameters</strong></td><td>maxIter=50, regParam=0.01, elasticNet=0.0, threshold=0.5</td></tr>
+              <tr><td><strong>Features</strong></td><td>78 continuous numerical flow metrics</td></tr>
+              <tr><td><strong>Active Model</strong></td><td><code id="ml-model-path">results/ml/run-20261024-115612/model/</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: REAL-TIME STREAMING TELEMETRY -->
+    <section id="panel-streaming" class="tab-panel">
+      <div style="background: rgba(148, 163, 184, 0.08); border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 13px; color: var(--text-muted);">
+        <strong>Streaming Telemetry Context:</strong> Real-time intrusion detection via Spark Structured Streaming consuming from Apache Kafka. Flow records are replayed from historical CICIDS2017 captures via <code>NetworkFlowProducer</code> with 64 KB bounds enforcement (SEC-05).
+      </div>
+      <div class="metric-grid">
+        <div class="metric-card" style="--card-accent: var(--green)">
+          <div class="metric-label">Events Consumed</div>
+          <div class="metric-val" id="st-consumed">10</div>
+          <div class="metric-sub">From Kafka: network-flows-ml-demo</div>
+        </div>
+        <div class="metric-card" style="--card-accent: var(--cyan)">
+          <div class="metric-label">Valid Inferences</div>
+          <div class="metric-val" id="st-valid">10 (100%)</div>
+          <div class="metric-sub">Scored via PipelineModel</div>
+        </div>
+        <div class="metric-card" style="--card-accent: var(--amber)">
+          <div class="metric-label">Rejected / Quarantined</div>
+          <div class="metric-val" id="st-rejected">0</div>
+          <div class="metric-sub">SEC-05 bounds & non-finite checks</div>
+        </div>
+        <div class="metric-card" style="--card-accent: var(--purple)">
+          <div class="metric-label">Duration & Throughput</div>
+          <div class="metric-val" id="st-dur">15.22 s</div>
+          <div class="metric-sub" id="st-tput">~0.657 events/sec</div>
+        </div>
+      </div>
+
+      <div class="card-full panel-card">
+        <div class="panel-title">Recent Streaming Predictions (Sample Micro-Batch)</div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Flow ID</th>
+              <th>Destination Port</th>
+              <th>Flow Duration</th>
+              <th>Predicted Label</th>
+              <th>Raw Prediction</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="st-predictions-body">
+            <tr><td colspan="6">Loading recent predictions...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TAB 5: GRAPHX TOPOLOGY -->
+    <section id="panel-graphx" class="tab-panel">
+      <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 13px; color: var(--cyan);">
+        <strong>Graph Topology Semantics:</strong> CICIDS2017 MachineLearningCVE strips IP addresses to prevent classifier identity bias. Graph vertices model deterministic <em>Client Behavioral Profile Groups</em> (1–1000, derived by hashing structural TCP header features) communicating with ground-truth <em>Destination Service Ports</em> (e.g. Port 80 HTTP, Port 443 HTTPS).
+      </div>
+      <div class="metric-grid">
+        <div class="metric-card" style="--card-accent: var(--cyan)">
+          <div class="metric-label">Total Graph Vertices</div>
+          <div class="metric-val" id="gx-vertices">24,932</div>
+          <div class="metric-sub">988 Client Profile Groups + 23,944 Service Ports</div>
+        </div>
+        <div class="metric-card" style="--card-accent: var(--blue)">
+          <div class="metric-label">Total Directed Edges</div>
+          <div class="metric-val" id="gx-edges">40,329</div>
+          <div class="metric-sub">Flow communication relationships</div>
+        </div>
+        <div class="metric-card" style="--card-accent: var(--purple)">
+          <div class="metric-label">Connected Components</div>
+          <div class="metric-val" id="gx-cc">7</div>
+          <div class="metric-sub">Identified graph clusters</div>
+        </div>
+        <div class="metric-card" style="--card-accent: var(--red)">
+          <div class="metric-label">DDoS Target Port (80)</div>
+          <div class="metric-val">93.48% Attack</div>
+          <div class="metric-sub">128,022 malicious flows / 594 In-Degree</div>
+        </div>
+      </div>
+
+      <div class="card-row">
+        <div class="panel-card">
+          <div class="panel-title">Top 10 Destination Service Ports by In-Degree Centrality</div>
+          <table class="data-table">
+            <thead>
+              <tr><th>Port</th><th>In-Degree</th><th>Total Flows</th><th>Attack Flows</th><th>Attack Ratio</th></tr>
+            </thead>
+            <tbody id="gx-ports-body">
+              <tr><td colspan="5">Loading GraphX centrality metrics...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="panel-card">
+          <div class="panel-title">GraphX Topology Summary JSON</div>
+          <pre class="raw-json" id="gx-json">Loading graph-analytics-summary.json...</pre>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    function switchTab(tabId, el) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+
+      const targetBtn = el || (typeof event !== 'undefined' && event && event.target ? event.target.closest('.tab-btn') : null);
+      if (targetBtn) {
+        targetBtn.classList.add('active');
+      } else {
+        const btn = document.querySelector(`.tab-btn[onclick*="'${tabId}'"]`);
+        if (btn) btn.classList.add('active');
+      }
+      const panel = document.getElementById('panel-' + tabId);
+      if (panel) panel.classList.add('active');
+    }
+
+    function updateStatus(state, msg) {
+      const statusEl = document.getElementById('systemStatus');
+      const dotEl = document.querySelector('.status-dot');
+      const pillEl = document.querySelector('.status-pill');
+      if (!statusEl) return;
+
+      if (state === 'loading') {
+        statusEl.textContent = msg || 'Loading telemetry...';
+        if (dotEl && dotEl.style) {
+          dotEl.style.background = '#f59e0b';
+          dotEl.style.boxShadow = '0 0 8px #f59e0b';
+        }
+        if (pillEl && pillEl.style) {
+          pillEl.style.background = '#78350f33';
+          pillEl.style.borderColor = '#f59e0b';
+          pillEl.style.color = '#fde68a';
+        }
+      } else if (state === 'success') {
+        statusEl.textContent = msg || 'Pipeline Online';
+        if (dotEl && dotEl.style) {
+          dotEl.style.background = '#22c55e';
+          dotEl.style.boxShadow = '0 0 8px #22c55e';
+        }
+        if (pillEl && pillEl.style) {
+          pillEl.style.background = '#064e3b';
+          pillEl.style.borderColor = '#059669';
+          pillEl.style.color = '#86efac';
+        }
+      } else if (state === 'error') {
+        statusEl.textContent = msg || 'API Offline';
+        if (dotEl && dotEl.style) {
+          dotEl.style.background = '#ef4444';
+          dotEl.style.boxShadow = '0 0 8px #ef4444';
+        }
+        if (pillEl && pillEl.style) {
+          pillEl.style.background = '#7f1d1d33';
+          pillEl.style.borderColor = '#ef4444';
+          pillEl.style.color = '#fca5a5';
+        }
+      }
+    }
+
+    async function fetchData() {
+      updateStatus('loading', 'Refreshing metrics...');
+      const apiUrl = (window.location.protocol === 'file:' || !window.location.origin || window.location.origin === 'null')
+        ? 'http://127.0.0.1:8088/api/data'
+        : '/api/data';
+
+      try {
+        const res = await fetch(apiUrl);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        renderDashboard(data);
+        const ts = data.server_timestamp ? new Date(data.server_timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+        updateStatus('success', `Pipeline Online (${ts})`);
+      } catch (err) {
+        console.error('Error fetching dashboard data:', err);
+        updateStatus('error', 'API Offline — ' + err.message);
+      }
+    }
+
+    function renderDashboard(d) {
+      if (!d) return;
+
+      // 1. Data Quality
+      if (d.data_quality && typeof d.data_quality.row_count === 'number') {
+        const dq = d.data_quality;
+        document.getElementById('ov-total-flows').textContent = dq.row_count.toLocaleString();
+        const cleanRows = dq.row_count - (dq.rows_with_invalid_numerics || 0);
+        document.getElementById('ov-clean-flows').textContent = cleanRows.toLocaleString();
+        document.getElementById('ov-clean-pct').textContent = ((cleanRows / dq.row_count) * 100).toFixed(2) + '% valid';
+        document.getElementById('ov-invalid-flows').textContent = (dq.rows_with_invalid_numerics || 0) + ' (' + (dq.invalid_numeric_pct || 0) + '%)';
+        document.getElementById('dq-json').textContent = JSON.stringify(dq, null, 2);
+      } else if (d.data_quality) {
+        document.getElementById('dq-json').textContent = JSON.stringify(d.data_quality, null, 2);
+      }
+
+      // 2. SQL Analytics
+      if (d.sql_analytics && d.sql_analytics.binary_distribution) {
+        const sq = d.sql_analytics;
+        const attackObj = sq.binary_distribution.ATTACK || { count: 0, percentage: 0 };
+        const benignObj = sq.binary_distribution.BENIGN || { count: 0, percentage: 0 };
+
+        document.getElementById('sql-attack-count').textContent = (attackObj.count || 0).toLocaleString();
+        document.getElementById('sql-attack-pct').textContent = (attackObj.percentage || 0).toFixed(2) + '% of traffic';
+        document.getElementById('sql-benign-count').textContent = (benignObj.count || 0).toLocaleString();
+        document.getElementById('sql-benign-pct').textContent = (benignObj.percentage || 0).toFixed(2) + '% of traffic';
+
+        document.getElementById('bar-attack-text').textContent = (attackObj.count || 0).toLocaleString() + ' (' + (attackObj.percentage || 0).toFixed(2) + '%)';
+        document.getElementById('bar-benign-text').textContent = (benignObj.count || 0).toLocaleString() + ' (' + (benignObj.percentage || 0).toFixed(2) + '%)';
+        document.getElementById('sql-json').textContent = JSON.stringify(sq, null, 2);
+      } else if (d.sql_analytics) {
+        document.getElementById('sql-json').textContent = JSON.stringify(d.sql_analytics, null, 2);
+      }
+
+      // 3. MLlib
+      if (d.ml_run_id && d.ml_run_id !== "unavailable") {
+        const badge = document.getElementById('ml-run-badge');
+        if (badge) badge.textContent = d.ml_run_id;
+        const modelPathEl = document.getElementById('ml-model-path');
+        if (modelPathEl) modelPathEl.textContent = `results/ml/${d.ml_run_id}/model/`;
+      }
+      if (d.ml_evaluation && d.ml_evaluation.metrics) {
+        const m = d.ml_evaluation.metrics;
+        document.getElementById('ml-acc').textContent = ((m.accuracy || 0) * 100).toFixed(2) + '%';
+        document.getElementById('ml-rec').textContent = ((m.attack_recall || 0) * 100).toFixed(2) + '%';
+        document.getElementById('ml-prec').textContent = ((m.attack_precision || 0) * 100).toFixed(2) + '%';
+        document.getElementById('ml-auc').textContent = typeof m.roc_auc === 'number' ? m.roc_auc.toFixed(4) : 'N/A';
+      }
+      if (d.confusion_matrix && d.confusion_matrix.true_negatives !== undefined) {
+        const cm = d.confusion_matrix;
+        document.getElementById('cm-tn').textContent = (cm.true_negatives || 0).toLocaleString();
+        document.getElementById('cm-fp').textContent = (cm.false_positives || 0).toLocaleString();
+        document.getElementById('cm-fn').textContent = (cm.false_negatives || 0).toLocaleString();
+        document.getElementById('cm-tp').textContent = (cm.true_positives || 0).toLocaleString();
+      }
+
+      // 4. Streaming
+      if (d.streaming_telemetry && d.streaming_telemetry.total_consumed !== undefined) {
+        const st = d.streaming_telemetry;
+        document.getElementById('st-consumed').textContent = st.total_consumed;
+        document.getElementById('st-valid').textContent = `${st.total_valid_inferences} (BENIGN: ${st.predicted_benign || 0}, ATTACK: ${st.predicted_attack || 0})`;
+        document.getElementById('st-rejected').textContent = st.total_rejected || 0;
+        const dur = typeof st.total_duration_seconds === 'number' ? st.total_duration_seconds.toFixed(2) : '0.00';
+        document.getElementById('st-dur').textContent = dur + ' s';
+        const tput = typeof st.events_per_second === 'number' ? `~${st.events_per_second.toFixed(3)} events/sec` : 'N/A';
+        document.getElementById('st-tput').textContent = tput;
+      }
+
+      if (d.recent_predictions && d.recent_predictions.length > 0) {
+        const tbody = document.getElementById('st-predictions-body');
+        tbody.innerHTML = '';
+        d.recent_predictions.forEach(r => {
+          const isAttack = r.prediction === '1.0' || r.predicted_label === 'ATTACK';
+          const badgeClass = isAttack ? 'badge-attack' : 'badge-benign';
+          const labelText = isAttack ? 'ATTACK' : 'BENIGN';
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><code>${(r.flow_id || 'sim-flow').substring(0, 18)}...</code></td>
+            <td><strong>${r.destination_port || '80'}</strong></td>
+            <td>${r.flow_duration || '3'}</td>
+            <td><span class="badge ${badgeClass}">${labelText}</span></td>
+            <td>${r.prediction || '0.0'}</td>
+            <td><span class="badge badge-benign">Scored</span></td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      // 5. GraphX
+      if (d.graph_analytics && typeof d.graph_analytics.total_vertices === 'number') {
+        const gx = d.graph_analytics;
+        document.getElementById('gx-vertices').textContent = gx.total_vertices.toLocaleString();
+        document.getElementById('gx-edges').textContent = (gx.total_edges || 0).toLocaleString();
+        document.getElementById('gx-cc').textContent = gx.connected_components_count || 0;
+        document.getElementById('gx-json').textContent = JSON.stringify(gx, null, 2);
+
+        if (gx.top_targeted_ports && gx.top_targeted_ports.length > 0) {
+          const tbody = document.getElementById('gx-ports-body');
+          tbody.innerHTML = '';
+          gx.top_targeted_ports.forEach(p => {
+            const isTargeted = p.attack_ratio > 50;
+            const badgeClass = isTargeted ? 'badge-attack' : 'badge-benign';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td><strong>Port ${p.destination_port}</strong></td>
+              <td>${p.in_degree}</td>
+              <td>${(p.total_flows || 0).toLocaleString()}</td>
+              <td>${(p.attack_flows || 0).toLocaleString()}</td>
+              <td><span class="badge ${badgeClass}">${p.attack_ratio}%</span></td>
+            `;
+            tbody.appendChild(tr);
+          });
+        }
+      } else if (d.graph_analytics) {
+        document.getElementById('gx-json').textContent = JSON.stringify(d.graph_analytics, null, 2);
+      }
+    }
+
+    // Initial load
+    fetchData();
+  </script>
+</body>
+</html>

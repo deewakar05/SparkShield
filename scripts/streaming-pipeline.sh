@@ -310,7 +310,26 @@ cmd_run_demo() {
 cmd_run_ml_demo() {
   local RECORDS=100
   local DURATION=60
-  local MODEL_PATH="results/ml/run-20261024-115612/model"
+  local MODEL_PATH="${SPARKSHIELD_MODEL_PATH:-}"
+
+  # Auto-discover model if not explicitly specified via environment
+  if [[ -z "$MODEL_PATH" ]]; then
+    if [[ -f "$PROJECT_ROOT/results/ml/latest_run.txt" ]]; then
+      local LATEST_RUN
+      LATEST_RUN="$(cat "$PROJECT_ROOT/results/ml/latest_run.txt" | tr -d '[:space:]')"
+      if [[ -d "$PROJECT_ROOT/$LATEST_RUN/model" ]]; then
+        MODEL_PATH="$LATEST_RUN/model"
+      fi
+    fi
+  fi
+  if [[ -z "$MODEL_PATH" ]]; then
+    local LATEST_RUN_DIR
+    LATEST_RUN_DIR="$(find "$PROJECT_ROOT/results/ml" -maxdepth 1 -type d -name "run-*" 2>/dev/null | sort | tail -1)"
+    if [[ -n "$LATEST_RUN_DIR" && -d "$LATEST_RUN_DIR/model" ]]; then
+      MODEL_PATH="${LATEST_RUN_DIR#$PROJECT_ROOT/}/model"
+    fi
+  fi
+  MODEL_PATH="${MODEL_PATH:-results/ml/run-20261024-115612/model}"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -355,14 +374,18 @@ cmd_run_ml_demo() {
     return 2
   }
 
-  local FULL_MODEL_PATH="$PROJECT_ROOT/$MODEL_PATH"
-  if [[ ! -d "$FULL_MODEL_PATH" && ! -d "$MODEL_PATH" ]]; then
-    log_err "Model directory not found: $MODEL_PATH"
+  # Validate model exists before proceeding
+  local RESOLVED_MODEL_DIR="$MODEL_PATH"
+  if [[ ! -d "$RESOLVED_MODEL_DIR" && -d "$PROJECT_ROOT/$MODEL_PATH" ]]; then
+    RESOLVED_MODEL_DIR="$PROJECT_ROOT/$MODEL_PATH"
+  fi
+
+  if [[ ! -d "$RESOLVED_MODEL_DIR" ]]; then
+    log_err "ML model directory not found: $MODEL_PATH"
+    log_err "Please train a model first using: ./scripts/train-model.sh train"
     return 1
   fi
-  if [[ -d "$FULL_MODEL_PATH" ]]; then
-    MODEL_PATH="$FULL_MODEL_PATH"
-  fi
+  MODEL_PATH="$RESOLVED_MODEL_DIR"
 
   local RUN_ID
   RUN_ID="$(date +%Y%m%d-%H%M%S)"

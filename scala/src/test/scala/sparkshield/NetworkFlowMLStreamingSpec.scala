@@ -363,4 +363,25 @@ class NetworkFlowMLStreamingSpec extends AnyFunSuite with SharedSparkSession {
       deleteRecursively(tempDir)
     }
   }
+
+  test("resolveDefaultModelPath resolves valid model path and parseArgs respects --model flag") {
+    val defaultPath = NetworkFlowMLStreaming.resolveDefaultModelPath()
+    assert(defaultPath.nonEmpty)
+
+    val args = Array(
+      "--topic", "test-topic",
+      "--model", "custom/test/model/path",
+      "--checkpoint", "custom/checkpoint",
+      "--output", "custom/output",
+      "--duration-seconds", "45",
+      "--max-payload-bytes", "32768"
+    )
+    val config = NetworkFlowMLStreaming.parseArgs(args)
+    assert(config.topic === "test-topic")
+    assert(config.modelPath === "custom/test/model/path")
+    assert(config.checkpointPath === "custom/checkpoint")
+    assert(config.outputPath === "custom/output")
+    assert(config.durationSeconds === Some(45L))
+    assert(config.maxPayloadBytes === 32768L)
+  }
 }

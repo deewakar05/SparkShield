@@ -239,8 +239,86 @@ class IntrusionDetectionModelSpec extends AnyFunSuite with SharedSparkSession {
       assert(new File(s"$runDir/features.json").exists())
       assert(new File(s"$runDir/evaluation-summary.txt").exists())
       assert(new File(s"$runDir/predictions_sample.csv").exists())
+
+      // Verify latest_run.txt pointer file was generated
+      val latestFile = new File(s"${config.outputBaseDir}/latest_run.txt")
+      assert(latestFile.exists(), "latest_run.txt pointer file should be written by saveArtifacts")
+      val pointerContent = scala.io.Source.fromFile(latestFile).getLines().next().trim
+      assert(pointerContent === runDir)
     } finally {
       deleteRecursively(tempDir)
     }
+  }
+
+  // ── 7. Confusion Matrix & Metric Calculation Edge Cases ─────
+
+  test("ConfusionMatrix correctly calculates metrics under extreme class imbalance and boundary conditions") {
+    // Perfect detector
+    val perfect = IntrusionDetectionModel.ConfusionMatrix(
+      trueNegatives = 100, falsePositives = 0, falseNegatives = 0, truePositives = 100
+    )
+    assert(perfect.total === 200)
+    assert(perfect.accuracy === 1.0)
+    assert(perfect.precision === 1.0)
+    assert(perfect.recall === 1.0)
+    assert(perfect.f1Score === 1.0)
+    assert(perfect.falsePositiveRate === 0.0)
+    assert(perfect.falseNegativeRate === 0.0)
+
+    // Complete miss (zero TP, zero FP - all predicted benign)
+    val completeMiss = IntrusionDetectionModel.ConfusionMatrix(
+      trueNegatives = 100, falsePositives = 0, falseNegatives = 50, truePositives = 0
+    )
+    assert(completeMiss.total === 150)
+    assert(completeMiss.accuracy === 100.0 / 150.0)
+    assert(completeMiss.precision === 0.0) // Safe division by zero
+    assert(completeMiss.recall === 0.0)
+    assert(completeMiss.f1Score === 0.0)
+    assert(completeMiss.falsePositiveRate === 0.0)
+    assert(completeMiss.falseNegativeRate === 1.0)
+
+    // Complete false alarm (zero TN, zero FN - all predicted attack)
+    val allAlarm = IntrusionDetectionModel.ConfusionMatrix(
+      trueNegatives = 0, falsePositives = 50, falseNegatives = 0, truePositives = 100
+    )
+    assert(allAlarm.total === 150)
+    assert(allAlarm.accuracy === 100.0 / 150.0)
+    assert(allAlarm.precision === 100.0 / 150.0)
+    assert(allAlarm.recall === 1.0)
+    assert(allAlarm.falsePositiveRate === 1.0)
+    assert(allAlarm.falseNegativeRate === 0.0)
+
+    // Empty matrix (0 total) does not trigger NaN / divide by zero
+    val emptyCm = IntrusionDetectionModel.ConfusionMatrix(0, 0, 0, 0)
+    assert(emptyCm.total === 0)
+    assert(emptyCm.accuracy === 0.0)
+    assert(emptyCm.precision === 0.0)
+    assert(emptyCm.recall === 0.0)
+    assert(emptyCm.f1Score === 0.0)
+    assert(emptyCm.falsePositiveRate === 0.0)
+    assert(emptyCm.falseNegativeRate === 0.0)
+  }
+
+  test("parseArgs parses CLI arguments including --test-input and hyperparameter overrides") {
+    val args = Array(
+      "--input", "data/custom/train",
+      "--test-input", "data/custom/test",
+      "--output-dir", "results/custom-ml",
+      "--train-ratio", "0.75",
+      "--seed", "123",
+      "--max-iter", "30",
+      "--reg-param", "0.05",
+      "--threshold", "0.6"
+    )
+    val config = IntrusionDetectionModel.parseArgs(args)
+
+    assert(config.inputPath === "data/custom/train")
+    assert(config.testInputPath === Some("data/custom/test"))
+    assert(config.outputBaseDir === "results/custom-ml")
+    assert(config.trainRatio === 0.75)
+    assert(config.seed === 123L)
+    assert(config.maxIter === 30)
+    assert(config.regParam === 0.05)
+    assert(config.threshold === 0.6)
   }
 }

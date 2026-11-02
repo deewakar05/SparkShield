@@ -60,14 +60,15 @@ object IntrusionDetectionModel {
   )
 
   case class ModelConfig(
-    inputPath: String          = DefaultInputPath,
-    outputBaseDir: String      = "results/ml",
-    trainRatio: Double         = DefaultTrainRatio,
-    seed: Long                 = DefaultSeed,
-    maxIter: Int               = DefaultMaxIter,
-    regParam: Double           = DefaultRegParam,
-    elasticNetParam: Double    = DefaultElasticNetParam,
-    threshold: Double          = DefaultThreshold
+    inputPath: String             = DefaultInputPath,
+    testInputPath: Option[String] = None,
+    outputBaseDir: String         = "results/ml",
+    trainRatio: Double            = DefaultTrainRatio,
+    seed: Long                    = DefaultSeed,
+    maxIter: Int                  = DefaultMaxIter,
+    regParam: Double              = DefaultRegParam,
+    elasticNetParam: Double       = DefaultElasticNetParam,
+    threshold: Double             = DefaultThreshold
   )
 
   case class DatasetAudit(
@@ -422,9 +423,11 @@ object IntrusionDetectionModel {
 
     // 3. Save JSON Metrics
     val cm = metrics.confusionMatrix
+    val evalStrategy = if (config.testInputPath.isDefined) "independent_cross_capture" else "random_train_test_split"
     val metricsJson =
       s"""{
          |  "run_timestamp": "${Instant.now()}",
+         |  "evaluation_strategy": "$evalStrategy",
          |  "seed": ${config.seed},
          |  "train_ratio": ${config.trainRatio},
          |  "model_hyperparameters": {
@@ -582,6 +585,18 @@ object IntrusionDetectionModel {
     val pwSummary = new PrintWriter(summaryFile)
     try pwSummary.write(summaryText) finally pwSummary.close()
 
+    // Write latest run pointer file for downstream consumers (streaming & dashboard)
+    try {
+      val baseDir = new File(config.outputBaseDir)
+      if (!baseDir.exists()) baseDir.mkdirs()
+      val latestFile = new File(s"${config.outputBaseDir}/latest_run.txt")
+      val pwLatest = new PrintWriter(latestFile)
+      try pwLatest.println(runDir) finally pwLatest.close()
+      log.info(s"Updated latest run pointer: ${latestFile.getPath} -> $runDir")
+    } catch {
+      case e: Exception => log.warn(s"Could not write latest_run.txt: ${e.getMessage}")
+    }
+
     log.info(s"Artifacts saved successfully in $runDir")
   }
 
@@ -595,6 +610,9 @@ object IntrusionDetectionModel {
       args(i) match {
         case "--input" if i + 1 < args.length =>
           config = config.copy(inputPath = args(i + 1))
+          i += 2
+        case "--test-input" if i + 1 < args.length =>
+          config = config.copy(testInputPath = Some(args(i + 1)))
           i += 2
         case "--output-dir" if i + 1 < args.length =>
           config = config.copy(outputBaseDir = args(i + 1))
@@ -633,6 +651,7 @@ object IntrusionDetectionModel {
     println("\n" + "=" * 75)
     println("  SparkShield — Milestone 5: ML Intrusion Detection Training")
     println(s"  Input Dataset : ${config.inputPath}")
+    config.testInputPath.foreach(tp => println(s"  Test Dataset  : $tp (Cross-Dataset Evaluation)"))
     println(s"  Train Ratio   : ${config.trainRatio * 100}%")
     println(s"  Random Seed   : ${config.seed}")
     println(s"  Max Iterations: ${config.maxIter}")
@@ -659,8 +678,53 @@ object IntrusionDetectionModel {
       // 2. Prepare & Audit Data
       val (preparedDf, audit) = prepareData(rawDf)
 
-      // 3. Train / Test Split
-      val (trainDf, testDf, splitSummary) = splitDataset(preparedDf, config)
+      // 3. Train / Test Split or Independent Test Evaluation
+
+val (trainDf, testDf, splitSummary) = config.testInputPath match {
+  case Some(testPath) =>
+    println(s"Loading independent test dataset from: $testPath")
+
+    val rawTestDf = spark.read.parquet(testPath)
+    val (preparedTestDf, _) = prepareData(rawTestDf)
+
+    // Validate training and test feature compatibility
+    val trainFeatures = audit.featureNames
+    val testFeatures = getFeatureColumns(rawTestDf)
+
+    if (trainFeatures.toSet != testFeatures.toSet) {
+      throw new IllegalArgumentException(
+        s"Training/test feature mismatch. " +
+        s"Missing in test: ${trainFeatures.toSet -- testFeatures.toSet}; " +
+        s"Extra in test: ${testFeatures.toSet -- trainFeatures.toSet}"
+      )
+    }
+
+    val trCount = preparedDf.count()
+    val teCount = preparedTestDf.count()
+
+    val trainLabelCounts =
+      preparedDf.groupBy("label").count().collect()
+        .map(r => r.getDouble(0) -> r.getLong(1)).toMap
+
+    val testLabelCounts =
+      preparedTestDf.groupBy("label").count().collect()
+        .map(r => r.getDouble(0) -> r.getLong(1)).toMap
+
+    val summary = SplitSummary(
+      trainCount       = trCount,
+      trainBenignCount = trainLabelCounts.getOrElse(0.0, 0L),
+      trainAttackCount = trainLabelCounts.getOrElse(1.0, 0L),
+      testCount        = teCount,
+      testBenignCount  = testLabelCounts.getOrElse(0.0, 0L),
+      testAttackCount  = testLabelCounts.getOrElse(1.0, 0L)
+    )
+
+    (preparedDf, preparedTestDf, summary)
+
+  case None =>
+    splitDataset(preparedDf, config)
+}
+
 
       // 4. Build Pipeline
       val pipeline = buildPipeline(audit.featureNames, config)

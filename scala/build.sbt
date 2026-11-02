@@ -27,6 +27,7 @@ lazy val root = (project in file("."))
       "org.apache.spark" %% "spark-core"      % "3.5.9" % "provided",
       "org.apache.spark" %% "spark-sql"       % "3.5.9" % "provided",
       "org.apache.spark" %% "spark-mllib"     % "3.5.9" % "provided",
+      "org.apache.spark" %% "spark-graphx"    % "3.5.9" % "provided",
 
       // Kafka connector for Structured Streaming and Kafka Producer
       "org.apache.spark" %% "spark-sql-kafka-0-10" % "3.5.9",
@@ -36,9 +37,10 @@ lazy val root = (project in file("."))
 
       // Test — not provided; need full jars in test runner
       "org.scalatest" %% "scalatest"   % "3.2.18" % Test,
-      "org.apache.spark" %% "spark-core"  % "3.5.9" % Test,
-      "org.apache.spark" %% "spark-sql"   % "3.5.9" % Test,
-      "org.apache.spark" %% "spark-mllib" % "3.5.9" % Test
+      "org.apache.spark" %% "spark-core"   % "3.5.9" % Test,
+      "org.apache.spark" %% "spark-sql"    % "3.5.9" % Test,
+      "org.apache.spark" %% "spark-mllib"  % "3.5.9" % Test,
+      "org.apache.spark" %% "spark-graphx" % "3.5.9" % Test
     ),
 
     // ── sbt-assembly fat-jar configuration ──────────────────

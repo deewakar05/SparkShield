@@ -359,7 +359,7 @@ class KafkaStreamingIntegrationSpec extends AnyFunSuite with SharedSparkSession 
       val p2 = spark.read.parquet(new File(tempDir, "parquet/batch_99").getAbsolutePath)
       val c2 = spark.read.option("header", "true").csv(new File(tempDir, "csv/batch_99").getAbsolutePath)
 
-      // Exactly-once file output guarantee: overwrite mode prevents double counting
+      // Idempotent batch output guarantee: overwrite mode prevents duplicate records upon retry
       assert(p2.count() === 2L, "Retried batch must overwrite, not append duplicate records")
       assert(c2.count() === 2L, "Retried CSV batch must overwrite, not duplicate CSV rows")
     } finally {

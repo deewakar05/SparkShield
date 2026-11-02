@@ -33,11 +33,39 @@ object NetworkFlowMLStreaming {
 
   private val log = LoggerFactory.getLogger(getClass)
 
+  def resolveDefaultModelPath(): String = {
+    sys.env.get("SPARKSHIELD_MODEL_PATH")
+      .orElse(sys.props.get("sparkshield.model.path"))
+      .orElse {
+        val ptr = new File("results/ml/latest_run.txt")
+        if (ptr.exists() && ptr.length() > 0) {
+          try {
+            val src = scala.io.Source.fromFile(ptr)
+            val path = try src.getLines().find(_.trim.nonEmpty).map(_.trim) finally src.close()
+            path.map(p => s"$p/model").filter(p => new File(p).exists())
+          } catch {
+            case _: Exception => None
+          }
+        } else None
+      }
+      .orElse {
+        val mlDir = new File("results/ml")
+        if (mlDir.exists() && mlDir.isDirectory) {
+          val runs = mlDir.listFiles().filter(f => f.isDirectory && f.getName.startsWith("run-") && new File(f, "model").exists())
+          if (runs.nonEmpty) {
+            val latest = runs.maxBy(_.getName)
+            Some(s"${latest.getPath}/model")
+          } else None
+        } else None
+      }
+      .getOrElse("results/ml/run-20261024-115612/model")
+  }
+
   val DefaultTopic: String = NetworkFlowStreaming.DefaultTopic
   val DefaultBootstrapServers: String = NetworkFlowStreaming.DefaultBootstrapServers
   val DefaultCheckpointPath: String = "checkpoints/network-flows-ml-streaming"
   val DefaultOutputPath: String = "results/streaming-ml"
-  val DefaultModelPath: String = "results/ml/run-20261024-115612/model"
+  val DefaultModelPath: String = resolveDefaultModelPath()
   val DefaultMaxPayloadBytes: Long = NetworkFlowStreaming.DefaultMaxPayloadBytes // 64 KB (SEC-05)
 
   case class MLStreamConfig(
@@ -70,7 +98,11 @@ object NetworkFlowMLStreaming {
   def loadModelAndContract(modelPath: String): (PipelineModel, Array[String]) = {
     val f = new File(modelPath)
     if (!f.exists()) {
-      throw new IllegalArgumentException(s"Saved ML model not found at: $modelPath")
+      throw new IllegalArgumentException(
+        s"Saved ML model directory not found at: '$modelPath'. " +
+        "Please specify a valid model path using --model <path>, set SPARKSHIELD_MODEL_PATH, " +
+        "or train a new model first using: ./scripts/train-model.sh train"
+      )
     }
 
     log.info(s"Loading saved Spark MLlib PipelineModel from: $modelPath")
